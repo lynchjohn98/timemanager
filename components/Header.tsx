@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { logout } from "@/app/auth/actions";
 import Avatar from "./Avatar";
 
@@ -19,8 +19,6 @@ const links = [
 ];
 
 export default function Header({ profile }: { profile: HeaderProfile }) {
-  const pathname = usePathname();
-
   return (
     <header className="flex items-center justify-between border-b border-moa-line px-6 py-6 sm:px-10">
       <Link href="/" className="flex items-center gap-5">
@@ -34,25 +32,42 @@ export default function Header({ profile }: { profile: HeaderProfile }) {
       </Link>
 
       <div className="flex items-center gap-8">
-        <nav className="flex items-center gap-8 text-sm font-medium">
-          {links.map((link) => {
-            const active = link.href === "/" ? pathname === "/" || pathname.startsWith("/projects") : pathname.startsWith(link.href);
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`border-b pb-1 transition-colors hover:text-moa-muted ${
-                  active ? "border-moa-text" : "border-transparent"
-                }`}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* Reading the current URL must happen inside Suspense (Cache Components) */}
+        <Suspense fallback={<NavLinks pathname={null} />}>
+          <ActiveNavLinks />
+        </Suspense>
         <AvatarMenu profile={profile} />
       </div>
     </header>
+  );
+}
+
+function ActiveNavLinks() {
+  const pathname = usePathname();
+  return <NavLinks pathname={pathname} />;
+}
+
+/** The menu links. With no pathname (while loading) nothing is underlined. */
+function NavLinks({ pathname }: { pathname: string | null }) {
+  return (
+    <nav className="flex items-center gap-8 text-sm font-medium">
+      {links.map((link) => {
+        const active =
+          pathname !== null &&
+          (link.href === "/" ? pathname === "/" || pathname.startsWith("/projects") : pathname.startsWith(link.href));
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            className={`border-b pb-1 transition-colors hover:text-moa-muted ${
+              active ? "border-moa-text" : "border-transparent"
+            }`}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
