@@ -129,9 +129,9 @@ async function HomeContent({ searchParams }: { searchParams: SearchParams }) {
 function SignedOut() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 pb-24 text-center">
-      <h1 className="text-5xl font-medium tracking-wide sm:text-7xl">Projects and hours</h1>
+      <h1 className="text-5xl font-medium tracking-wide sm:text-7xl">MOA Time Management</h1>
       <p className="max-w-md text-lg text-moa-muted">
-        Log in to track billable hours by project and phase, and see how each budget is holding up.
+        Track billable hours by projects, phases, and view forecasts for similar projects.
       </p>
       <div className="flex gap-4">
         <Link
