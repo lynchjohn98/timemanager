@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getProfile } from "@/lib/profile";
-import { getAllData, getMyWeek, getPhaseLibrary, getProjectEntries, getTeamWeek, isUuid } from "@/lib/data";
+import { getAllData, getMyWeek, getPhaseLibrary, getProjectAccess, getProjectEntries, getTeam, getTeamWeek, isUuid } from "@/lib/data";
 import { buildStats, forecast, targetFromStats } from "@/lib/forecast";
 import { addDays, mondayOf, shortDate, ymdInTz } from "@/lib/dates";
 import { hoursText, money, pct, statusLabel } from "@/lib/options";
@@ -12,15 +12,22 @@ import Timesheet from "@/components/projects/Timesheet";
 import PhaseEditor from "@/components/projects/PhaseEditor";
 import ProjectDetailsForm from "@/components/projects/ProjectDetailsForm";
 import HoursBreakdown from "@/components/projects/HoursBreakdown";
+import TeamManager from "@/components/projects/TeamManager";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string; week?: string }>;
 
-const TABS = [
+// Project admins see every tab; team members see their timesheet and their own hours
+const ADMIN_TABS = [
   { key: "time", label: "Timesheet" },
   { key: "hours", label: "Hours" },
   { key: "phases", label: "Phases" },
+  { key: "team", label: "Team" },
   { key: "details", label: "Details" },
+] as const;
+const MEMBER_TABS = [
+  { key: "time", label: "Timesheet" },
+  { key: "hours", label: "My hours" },
 ] as const;
 
 export default function ProjectPage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
@@ -40,18 +47,24 @@ async function ProjectContent({ params, searchParams }: { params: Params; search
   const { id } = await params;
   if (!isUuid(id)) notFound();
   const sp = await searchParams;
+
+  const access = await getProjectAccess(id, profile.id);
+  if (!access) notFound(); // not on this project's team
+  const isManager = access.access === "admin";
+  const TABS: readonly { key: string; label: string }[] = isManager ? ADMIN_TABS : MEMBER_TABS;
   const tab = TABS.find((t) => t.key === sp.tab)?.key ?? "time";
 
   const today = ymdInTz(new Date(), profile.timezone || "UTC");
   const weekStart = mondayOf(sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : today);
   const weekEnd = addDays(weekStart, 6);
 
-  const [{ projects, phases, weeks }, library, mine, team, entries] = await Promise.all([
+  const [{ projects, phases, weeks }, library, mine, team, entries, teamAdmin] = await Promise.all([
     getAllData(),
-    getPhaseLibrary(),
+    isManager ? getPhaseLibrary() : Promise.resolve({ tags: [], sets: [] }),
     tab === "time" ? getMyWeek(id, profile.id, weekStart, weekEnd) : Promise.resolve([]),
     tab === "time" ? getTeamWeek(id, weekStart, weekEnd) : Promise.resolve([]),
     tab === "hours" ? getProjectEntries(id) : Promise.resolve([]),
+    tab === "team" ? getTeam(id) : Promise.resolve({ members: [], invites: [] }),
   ]);
 
   const stats = buildStats(projects, phases, weeks, today);
@@ -80,11 +93,14 @@ async function ProjectContent({ params, searchParams }: { params: Params; search
             {p.client_name && <span>{p.client_name}</span>}
             {p.project_type && <span>{p.project_type}</span>}
             <span>{statusLabel(p.status)}</span>
-            {p.hourly_rate > 0 && <span>{money(p.hourly_rate)} per hour</span>}
+            {isManager && p.hourly_rate > 0 && <span>{money(p.hourly_rate)} per hour</span>}
+            {!isManager && <span>Your role: {access.role_name || "Team member"}</span>}
           </p>
         </div>
       </header>
 
+      {isManager ? (
+        <>
       {/* Numbers */}
       <section className="mt-8 grid gap-6 border-y border-moa-line py-6 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Budget" value={money(s.budget)} sub={s.budgetHours !== null ? hoursText(Math.round(s.budgetHours)) : "No budget set"} />
@@ -111,6 +127,18 @@ async function ProjectContent({ params, searchParams }: { params: Params; search
       </section>
 
       <ForecastCard forecast={f} />
+
+        </>
+      ) : (
+        <section className="mt-8 grid gap-6 border-y border-moa-line py-6 sm:grid-cols-3">
+          <Stat label="Your hours on this project" value={hoursText(s.hours)} />
+          <Stat label="Phase now" value={s.currentPhase ?? "—"} />
+          <Stat
+            label="Timeline"
+            value={`${p.start_date ? shortDate(p.start_date) : "—"} – ${p.end_date ? shortDate(p.end_date, true) : "—"}`}
+          />
+        </section>
+      )}
 
       {/* Tabs */}
       <nav aria-label="Project sections" className="mt-10 flex gap-8 border-b border-moa-line">
@@ -152,6 +180,7 @@ async function ProjectContent({ params, searchParams }: { params: Params; search
             entries={entries}
             phases={s.phases.map((ph) => ({ id: ph.phase.id, name: ph.phase.name }))}
             currentUserId={profile.id}
+            showMoney={isManager}
           />
         )}
         {tab === "phases" && (
@@ -162,6 +191,15 @@ async function ProjectContent({ params, searchParams }: { params: Params; search
             hourlyRate={p.hourly_rate}
             tags={library.tags}
             sets={library.sets}
+          />
+        )}
+        {tab === "team" && (
+          <TeamManager
+            projectId={id}
+            projectName={p.name}
+            members={teamAdmin.members}
+            invites={teamAdmin.invites}
+            currentUserId={profile.id}
           />
         )}
         {tab === "details" && (

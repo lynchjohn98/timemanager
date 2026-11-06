@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { Suspense, useActionState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { AuthState } from "@/app/auth/actions";
 
 type FieldProps = {
@@ -8,9 +9,12 @@ type FieldProps = {
   name: string;
   type?: string;
   autoComplete?: string;
+  required?: boolean;
+  defaultValue?: string;
+  hint?: string;
 };
 
-function FormField({ label, name, type = "text", autoComplete }: FieldProps) {
+function FormField({ label, name, type = "text", autoComplete, required = true, defaultValue, hint }: FieldProps) {
   return (
     <label className="flex flex-col gap-2">
       <span className="text-sm text-moa-muted">{label}</span>
@@ -18,10 +22,26 @@ function FormField({ label, name, type = "text", autoComplete }: FieldProps) {
         type={type}
         name={name}
         autoComplete={autoComplete}
-        required
+        required={required}
+        defaultValue={defaultValue}
         className="border-b border-moa-line bg-transparent py-2 text-lg font-medium outline-none transition-colors focus:border-moa-text"
       />
+      {hint && <span className="text-xs text-moa-muted">{hint}</span>}
     </label>
+  );
+}
+
+/** Access code, filled in automatically from an invite link (?code=…). */
+function CodeField() {
+  const code = useSearchParams().get("code") ?? "";
+  return (
+    <FormField
+      label="Access code"
+      name="code"
+      required={false}
+      defaultValue={code}
+      hint="From your invite. Without a code you'll have an account but no projects until someone adds you."
+    />
   );
 }
 
@@ -30,10 +50,11 @@ type AuthFormProps = {
   submitLabel: string;
   action: (state: AuthState, formData: FormData) => Promise<AuthState>;
   showName?: boolean;
+  showCode?: boolean;
   footer: React.ReactNode;
 };
 
-export default function AuthForm({ title, submitLabel, action, showName, footer }: AuthFormProps) {
+export default function AuthForm({ title, submitLabel, action, showName, showCode, footer }: AuthFormProps) {
   const [state, formAction, pending] = useActionState(action, { error: null, message: null });
 
   if (state.message) {
@@ -60,6 +81,11 @@ export default function AuthForm({ title, submitLabel, action, showName, footer 
           type="password"
           autoComplete={showName ? "new-password" : "current-password"}
         />
+        {showCode && (
+          <Suspense fallback={<FormField label="Access code" name="code" required={false} />}>
+            <CodeField />
+          </Suspense>
+        )}
 
         {state.error && (
           <p className="border border-red-400/40 px-4 py-3 text-sm text-red-300">{state.error}</p>

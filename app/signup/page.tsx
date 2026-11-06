@@ -9,6 +9,7 @@ export default function SignupPage() {
       submitLabel="Sign Up"
       action={signup}
       showName
+      showCode
       footer={
         <>
           Already have an account?{" "}

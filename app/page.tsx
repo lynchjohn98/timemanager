@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { getProfile } from "@/lib/profile";
-import { getAllData } from "@/lib/data";
+import { getAllData, getMyMemberships } from "@/lib/data";
 import { buildStats, forecast, targetFromStats } from "@/lib/forecast";
 import { addDays, mondayOf, ymdInTz } from "@/lib/dates";
 import ProjectSheet, { type SheetRow } from "@/components/sheet/ProjectSheet";
@@ -40,7 +40,8 @@ async function HomeContent({ searchParams }: { searchParams: SearchParams }) {
   const lastWeek = addDays(mondayOf(today), shift * 7);
   const weekColumns = Array.from({ length: WEEKS_SHOWN }, (_, i) => addDays(lastWeek, (i - WEEKS_SHOWN + 1) * 7));
 
-  const { projects, phases, weeks } = await getAllData();
+  const isAdmin = profile.app_role === "admin";
+  const [{ projects, phases, weeks }, memberships] = await Promise.all([getAllData(), getMyMemberships(profile.id)]);
   const stats = buildStats(projects, phases, weeks, today);
 
   const inView = (status: string, v: View) =>
@@ -48,7 +49,16 @@ async function HomeContent({ searchParams }: { searchParams: SearchParams }) {
 
   const rows: SheetRow[] = stats
     .filter((s) => inView(s.project.status, view.key))
-    .map((s) => ({ stats: s, forecast: forecast(targetFromStats(s), stats) }));
+    .map((s) => {
+      const m = memberships.get(s.project.id);
+      return {
+        stats: s,
+        forecast: forecast(targetFromStats(s), stats),
+        // Budgets and forecasts only for people who run the project
+        canManage: m?.access === "admin",
+        role: m?.role_name ?? null,
+      };
+    });
 
   const link = (v: View, w: number) => {
     const q = new URLSearchParams();
@@ -97,30 +107,44 @@ async function HomeContent({ searchParams }: { searchParams: SearchParams }) {
               Later
             </Link>
           </div>
-          <Link
-            href="/projects/new"
-            className="border border-moa-text px-4 py-2 font-semibold transition-colors hover:bg-moa-text hover:text-moa-bg"
-          >
-            New project
-          </Link>
+          {isAdmin && (
+            <Link
+              href="/projects/new"
+              className="border border-moa-text px-4 py-2 font-semibold transition-colors hover:bg-moa-text hover:text-moa-bg"
+            >
+              New project
+            </Link>
+          )}
         </div>
       </div>
 
       {rows.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center">
           <p className="text-3xl font-medium">{view.empty}</p>
-          <p className="max-w-md text-moa-muted">
-            Create a project, give it phases and a budget, then log hours against each phase.
-          </p>
-          <Link
-            href="/projects/new"
-            className="mt-4 border border-moa-text px-6 py-3 text-lg font-semibold transition-colors hover:bg-moa-text hover:text-moa-bg"
-          >
-            New project
-          </Link>
+          {isAdmin ? (
+            <>
+              <p className="max-w-md text-moa-muted">
+                Create a project, give it phases and a budget, then log hours against each phase.
+              </p>
+              <Link
+                href="/projects/new"
+                className="mt-4 border border-moa-text px-6 py-3 text-lg font-semibold transition-colors hover:bg-moa-text hover:text-moa-bg"
+              >
+                New project
+              </Link>
+            </>
+          ) : (
+            <p className="max-w-md text-moa-muted">
+              You&apos;ll see projects here once an admin adds you. Got an invite code? Enter it on your{" "}
+              <Link href="/account" className="text-moa-text underline underline-offset-4">
+                account page
+              </Link>
+              .
+            </p>
+          )}
         </div>
       ) : (
-        <ProjectSheet rows={rows} weekColumns={weekColumns} currentWeek={mondayOf(today)} today={today} />
+        <ProjectSheet rows={rows} weekColumns={weekColumns} currentWeek={mondayOf(today)} today={today} showMoney={rows.some((r) => r.canManage)} />
       )}
     </section>
   );
@@ -129,9 +153,9 @@ async function HomeContent({ searchParams }: { searchParams: SearchParams }) {
 function SignedOut() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 pb-24 text-center">
-      <h1 className="text-5xl font-medium tracking-wide sm:text-7xl">MOA Time Management</h1>
+      <h1 className="text-5xl font-medium tracking-wide sm:text-7xl">Projects and hours</h1>
       <p className="max-w-md text-lg text-moa-muted">
-        Track billable hours by projects, phases, and view forecasts for similar projects.
+        Log in to track billable hours by project and phase, and see how each budget is holding up.
       </p>
       <div className="flex gap-4">
         <Link

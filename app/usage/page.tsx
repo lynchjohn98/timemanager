@@ -16,6 +16,14 @@ const steps = [
     body: "The forecast blends two things: the project's own pace carried forward to its planned finish, and how finished projects of the same type with a similar budget actually turned out. Mark projects Completed in their Details so they're used for future forecasts.",
   },
   {
+    title: "Log hours with notes",
+    body: "On a project's Timesheet, click a day (or just start typing a number) to open a box for the hours and a note about the work. Save stores that day straight away. Days with a note show a small dot.",
+  },
+  {
+    title: "Invite your team",
+    body: "Projects are private to their team. On a project's Team tab, an admin can add someone who already has an account by email, or create a one-time invite code for someone new. Team members only see the projects they're on, log their own hours and see their own totals. Admins also see budgets, forecasts, everyone's hours and settings.",
+  },
+  {
     title: "Reuse phases",
     body: "Every phase name you use is saved in the Phase library. Save a project's phases as a set to apply them, with their budget split, to future projects.",
   },

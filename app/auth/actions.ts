@@ -10,12 +10,22 @@ export async function signup(_prev: AuthState, formData: FormData): Promise<Auth
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const code = String(formData.get("code") ?? "").trim();
 
   const supabase = await createClient();
+
+  // Check the code first, so a typo doesn't create an account with no access
+  if (code) {
+    const { data: check, error: checkError } = await supabase.rpc("check_signup_code", { p_code: code });
+    if (checkError) return { error: checkError.message };
+    if (!check) return { error: "That code isn't valid, has already been used, or has expired. Check it with whoever invited you." };
+  }
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name } },
+    // The database applies the code when the account is created (admin access or project invite)
+    options: { data: { name, invite_code: code || undefined } },
   });
 
   if (error) return { error: error.message };
@@ -25,7 +35,6 @@ export async function signup(_prev: AuthState, formData: FormData): Promise<Auth
     return { error: null, message: `Check ${email} for a link to confirm your account.` };
   }
 
-  // Confirm email OFF → already logged in
   revalidatePath("/", "layout");
   redirect("/");
 }
@@ -53,4 +62,20 @@ export async function logout() {
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
   redirect("/login");
+}
+
+/** Already have an account: enter an invite (or admin) code to get access. */
+export async function redeemCode(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) return { error: "Enter the code you were given." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("redeem_invite", { p_code: code });
+  if (error) return { error: error.message };
+
+  revalidatePath("/", "layout");
+  return {
+    error: null,
+    message: data === "admin" ? "You now have admin access." : "You've joined the project. It's on your Projects page.",
+  };
 }

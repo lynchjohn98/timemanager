@@ -19,6 +19,7 @@ export default function NewProjectPage() {
 async function Wizard() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
+  if (profile.app_role !== "admin") redirect("/");
 
   const today = ymdInTz(new Date(), profile.timezone || "UTC");
   const [library, { projects, phases, weeks }] = await Promise.all([getPhaseLibrary(), getAllData()]);

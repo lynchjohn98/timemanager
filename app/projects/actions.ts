@@ -120,7 +120,9 @@ export async function saveWeek(projectId: string, weekStart: string, cells: Time
   const { error } = await supabase.rpc("save_week", {
     p_project_id: projectId,
     p_week_start: weekStart,
-    p_cells: cells.filter((c) => c.hours > 0).map((c) => ({ ...c, hours: Math.round(c.hours * 100) / 100 })),
+    p_cells: cells
+      .filter((c) => c.hours > 0)
+      .map((c) => ({ ...c, hours: Math.round(c.hours * 100) / 100, note: c.note?.trim() || null })),
   });
 
   if (error) return { error: error.message };
@@ -354,4 +356,102 @@ export async function completePhase(phaseId: string): Promise<ActionState> {
   if (error) return { error: error.message };
   refresh();
   return { error: null, ok: true };
+}
+
+
+// ---------------------------------------------------------------------
+// Team: people and invites (project admins only; the database enforces it)
+// ---------------------------------------------------------------------
+const ACCESS = ["admin", "member"] as const;
+const accessOf = (fd: FormData) => {
+  const a = String(fd.get("access") ?? "member");
+  return (ACCESS as readonly string[]).includes(a) ? (a as "admin" | "member") : null;
+};
+const roleOf = (fd: FormData) => {
+  const preset = text(fd, "role_name");
+  return preset === "__custom" ? text(fd, "custom_role") : preset;
+};
+
+/** Add someone who already has an account, by their email. */
+export async function addExistingMember(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const projectId = text(formData, "project_id");
+  const email = text(formData, "email");
+  const access = accessOf(formData);
+  if (!projectId) return { error: "Missing project." };
+  if (!email) return { error: "Enter their email address." };
+  if (!access) return { error: "Pick their access." };
+
+  const supabase = await createClient();
+  const { data: found, error: findError } = await supabase.rpc("find_user_by_email", { p_email: email });
+  if (findError) return { error: findError.message };
+  const person = (found as { id: string; name: string | null }[] | null)?.[0];
+  if (!person) return { error: `No account uses ${email}. Create an invite code for them instead.` };
+
+  const { error } = await supabase
+    .from("project_members")
+    .upsert({ project_id: projectId, user_id: person.id, access, role_name: roleOf(formData) }, { onConflict: "project_id,user_id" });
+  if (error) return { error: error.message };
+
+  refresh();
+  return { error: null, ok: true, message: `${person.name || email} is on the team.` };
+}
+
+/** Create a one-time invite code for someone who doesn't have an account yet. */
+export async function createInvite(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const projectId = text(formData, "project_id");
+  const access = accessOf(formData);
+  if (!projectId) return { error: "Missing project." };
+  if (!access) return { error: "Pick their access." };
+  const role = roleOf(formData);
+  if (access === "member" && !role) return { error: "Pick or type a role for this person." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("invites")
+    .insert({ project_id: projectId, access, role_name: role, email: text(formData, "email") })
+    .select("code")
+    .single();
+  if (error) return { error: error.message };
+
+  refresh();
+  return { error: null, ok: true, id: data.code, message: "Invite created." };
+}
+
+export async function updateMember(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const projectId = text(formData, "project_id");
+  const userId = text(formData, "user_id");
+  const access = accessOf(formData);
+  if (!projectId || !userId || !access) return { error: "Missing details." };
+
+  const supabase = await createClient();
+  const { data: claims } = await supabase.auth.getClaims();
+  if (claims?.claims?.sub === userId && access !== "admin") {
+    return { error: "You can't remove your own admin access. Ask another project admin to change it." };
+  }
+
+  const { error } = await supabase
+    .from("project_members")
+    .update({ access, role_name: roleOf(formData) })
+    .eq("project_id", projectId)
+    .eq("user_id", userId);
+  if (error) return { error: error.message };
+  refresh();
+  return { error: null, ok: true, message: "Saved." };
+}
+
+export async function removeMember(projectId: string, userId: string): Promise<ActionState> {
+  const supabase = await createClient();
+  const { data: claims } = await supabase.auth.getClaims();
+  if (claims?.claims?.sub === userId) return { error: "You can't remove yourself from your own project." };
+
+  const { error } = await supabase.from("project_members").delete().eq("project_id", projectId).eq("user_id", userId);
+  if (error) return { error: error.message };
+  refresh();
+  return { error: null, ok: true };
+}
+
+export async function revokeInvite(inviteId: string) {
+  const supabase = await createClient();
+  await supabase.from("invites").delete().eq("id", inviteId);
+  refresh();
 }

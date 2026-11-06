@@ -10,6 +10,7 @@ type HeaderProfile = {
   name: string | null;
   email: string | null;
   avatar_url: string | null;
+  app_role?: "admin" | "member";
 } | null;
 
 const links = [
@@ -33,8 +34,8 @@ export default function Header({ profile }: { profile: HeaderProfile }) {
 
       <div className="flex items-center gap-8">
         {/* Reading the current URL must happen inside Suspense (Cache Components) */}
-        <Suspense fallback={<NavLinks pathname={null} />}>
-          <ActiveNavLinks />
+        <Suspense fallback={<NavLinks pathname={null} isAdmin={profile?.app_role === "admin"} />}>
+          <ActiveNavLinks isAdmin={profile?.app_role === "admin"} />
         </Suspense>
         <AvatarMenu profile={profile} />
       </div>
@@ -42,16 +43,16 @@ export default function Header({ profile }: { profile: HeaderProfile }) {
   );
 }
 
-function ActiveNavLinks() {
+function ActiveNavLinks({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
-  return <NavLinks pathname={pathname} />;
+  return <NavLinks pathname={pathname} isAdmin={isAdmin} />;
 }
 
 /** The menu links. With no pathname (while loading) nothing is underlined. */
-function NavLinks({ pathname }: { pathname: string | null }) {
+function NavLinks({ pathname, isAdmin }: { pathname: string | null; isAdmin: boolean }) {
   return (
     <nav className="flex items-center gap-8 text-sm font-medium">
-      {links.map((link) => {
+      {links.filter((link) => isAdmin || link.href !== "/phases").map((link) => {
         const active =
           pathname !== null &&
           (link.href === "/" ? pathname === "/" || pathname.startsWith("/projects") : pathname.startsWith(link.href));

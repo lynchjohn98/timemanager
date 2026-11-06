@@ -16,6 +16,7 @@ export default function QuickLog({
   currentPhase,
   nextPhase,
   today,
+  canAdvance,
 }: {
   projectId: string;
   projectName: string;
@@ -24,6 +25,7 @@ export default function QuickLog({
   currentPhase: string | null;
   nextPhase: string | null;
   today: string;
+  canAdvance: boolean; // only project admins move phases on
 }) {
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export default function QuickLog({
         <button type="button" onClick={() => setOpen(true)} className={btn}>
           Log hours
         </button>
-        {currentPhaseId && (
+        {canAdvance && currentPhaseId && (
           <button
             type="button"
             onClick={advance}

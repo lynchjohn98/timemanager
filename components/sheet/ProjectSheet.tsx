@@ -9,7 +9,7 @@ import UsageBar from "@/components/ui/UsageBar";
 import VerdictDot from "@/components/ui/VerdictDot";
 import QuickLog from "./QuickLog";
 
-export type SheetRow = { stats: ProjectStats; forecast: Forecast };
+export type SheetRow = { stats: ProjectStats; forecast: Forecast; canManage: boolean; role: string | null };
 
 const fmtHours = (h: number) => (h ? Number(h.toFixed(2)).toString() : "");
 
@@ -18,11 +18,13 @@ export default function ProjectSheet({
   weekColumns,
   currentWeek,
   today,
+  showMoney,
 }: {
   rows: SheetRow[];
   weekColumns: string[];
   currentWeek: string;
   today: string;
+  showMoney: boolean; // false for team members: no budgets, amounts or forecasts
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -41,16 +43,22 @@ export default function ProjectSheet({
 
   return (
     <div ref={scrollRef} className="overflow-x-auto">
-      <table className="w-full min-w-[1100px] border-collapse text-sm">
+      <table className={`w-full ${showMoney ? "min-w-[1100px]" : "min-w-[760px]"} border-collapse text-sm`}>
         <thead>
           <tr className="border-b border-moa-line">
             <th className={`${th} ${sticky} pl-6 sm:pl-10`}>Project</th>
             <th className={th}>Phase now</th>
             <th className={th}>Dates</th>
-            <th className={`${th} text-right`}>Budget</th>
-            <th className={`${th} text-right`}>Logged</th>
-            <th className={th}>Budget used</th>
-            <th className={th}>Forecast</th>
+            {showMoney ? (
+              <>
+                <th className={`${th} text-right`}>Budget</th>
+                <th className={`${th} text-right`}>Logged</th>
+                <th className={th}>Budget used</th>
+                <th className={th}>Forecast</th>
+              </>
+            ) : (
+              <th className={`${th} text-right`}>Your hours</th>
+            )}
             {weekColumns.map((w) => (
               <th
                 key={w}
@@ -65,7 +73,7 @@ export default function ProjectSheet({
         </thead>
 
         <tbody>
-          {rows.map(({ stats: s, forecast: f }) => {
+          {rows.map(({ stats: s, forecast: f, canManage, role }) => {
             const p = s.project;
             const isOpen = !!open[p.id];
             return (
@@ -97,6 +105,7 @@ export default function ProjectSheet({
                           {p.client_name && <span className="truncate">{p.client_name}</span>}
                           {p.project_type && <span className="truncate">{p.project_type}</span>}
                           {p.status === "on_hold" && <span>On hold</span>}
+                          {!canManage && role && <span className="truncate">{role}</span>}
                         </p>
                       </div>
                     </div>
@@ -116,12 +125,15 @@ export default function ProjectSheet({
                         currentPhase={s.currentPhase}
                         nextPhase={s.nextPhase}
                         today={today}
+                        canAdvance={canManage}
                       />
                     )}
                   </td>
                   <td className={`${td} whitespace-normal text-moa-muted`}>
                     {p.start_date ? shortDate(p.start_date) : "—"} – {p.end_date ? shortDate(p.end_date, true) : "—"}
                   </td>
+                  {showMoney && canManage && (
+                    <>
                   <td className={`${td} text-right`}>
                     {money(s.budget)}
                     {s.budgetHours !== null && <div className="text-moa-muted">{hoursText(Math.round(s.budgetHours))}</div>}
@@ -151,6 +163,17 @@ export default function ProjectSheet({
                       </div>
                     )}
                   </td>
+                    </>
+                  )}
+                  {showMoney && !canManage && (
+                    <>
+                      <td className={`${td} text-right text-moa-muted`}>—</td>
+                      <td className={`${td} text-right`}>{hoursText(s.hours)}<div className="text-moa-muted">yours</div></td>
+                      <td className={td} />
+                      <td className={td} />
+                    </>
+                  )}
+                  {!showMoney && <td className={`${td} text-right`}>{hoursText(s.hours)}</td>}
                   {weekColumns.map((w) => (
                     <td
                       key={w}
@@ -173,6 +196,8 @@ export default function ProjectSheet({
                       </td>
                       <td className={`${td} py-2`}>{ph.phase.is_complete ? "Complete" : ""}</td>
                       <td className={`${td} py-2`} />
+                      {showMoney && canManage && (
+                        <>
                       <td className={`${td} py-2 text-right`}>{ph.phase.budget_amount !== null ? money(ph.phase.budget_amount) : ""}</td>
                       <td className={`${td} py-2 text-right`}>
                         {money(ph.amount)}
@@ -182,6 +207,17 @@ export default function ProjectSheet({
                         {ph.usedPct !== null && <UsageBar used={ph.usedPct} elapsed={null} thin />}
                       </td>
                       <td className={`${td} py-2`}>{ph.usedPct !== null ? `${pct(ph.usedPct)} of phase budget` : ""}</td>
+                        </>
+                      )}
+                      {showMoney && !canManage && (
+                        <>
+                          <td className={`${td} py-2`} />
+                          <td className={`${td} py-2 text-right`}>{hoursText(ph.hours)}</td>
+                          <td className={`${td} py-2`} />
+                          <td className={`${td} py-2`} />
+                        </>
+                      )}
+                      {!showMoney && <td className={`${td} py-2 text-right`}>{hoursText(ph.hours)}</td>}
                       {weekColumns.map((w) => (
                         <td key={w} className={`${td} py-2 text-right tabular-nums ${w === currentWeek ? "bg-white/[0.04]" : ""}`}>
                           {fmtHours(ph.weekly[w] ?? 0)}
@@ -200,13 +236,21 @@ export default function ProjectSheet({
             <td className={`${td} ${sticky} pl-6 font-medium sm:pl-10`}>Total</td>
             <td className={td} />
             <td className={td} />
-            <td className={`${td} text-right`}>{money(rows.reduce((s, r) => s + (r.stats.budget ?? 0), 0))}</td>
-            <td className={`${td} text-right`}>
-              {money(rows.reduce((s, r) => s + r.stats.amount, 0))}
-              <div className="text-moa-muted">{hoursText(rows.reduce((s, r) => s + r.stats.hours, 0))}</div>
-            </td>
-            <td className={td} />
-            <td className={td} />
+            {showMoney ? (
+              <>
+                <td className={`${td} text-right`}>
+                  {money(rows.filter((r) => r.canManage).reduce((s, r) => s + (r.stats.budget ?? 0), 0))}
+                </td>
+                <td className={`${td} text-right`}>
+                  {money(rows.filter((r) => r.canManage).reduce((s, r) => s + r.stats.amount, 0))}
+                  <div className="text-moa-muted">{hoursText(rows.reduce((s, r) => s + r.stats.hours, 0))}</div>
+                </td>
+                <td className={td} />
+                <td className={td} />
+              </>
+            ) : (
+              <td className={`${td} text-right font-medium`}>{hoursText(rows.reduce((s, r) => s + r.stats.hours, 0))}</td>
+            )}
             {weekTotals.map((t, i) => (
               <td
                 key={weekColumns[i]}

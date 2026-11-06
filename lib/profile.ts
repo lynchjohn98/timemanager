@@ -9,6 +9,7 @@ export type Profile = {
   created_at: string;
   avatar_url: string | null;
   timezone: string;
+  app_role: "admin" | "member";
 };
 
 // Gets the logged-in user's row from the profiles table (or null if logged out).
@@ -23,7 +24,7 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("id, name, email, created_at, avatar_url, timezone")
+    .select("id, name, email, created_at, avatar_url, timezone, app_role")
     .eq("id", claims.sub)
     .single();
 
@@ -37,6 +38,7 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
       created_at: new Date().toISOString(),
       avatar_url: null,
       timezone: "UTC",
+      app_role: "member",
     };
   }
 

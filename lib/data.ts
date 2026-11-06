@@ -45,7 +45,7 @@ export type PhaseSet = {
   items: { phase_tag_id: string; name: string; sort_order: number; budget_share: number | null }[];
 };
 
-export type TimeCell = { phase_id: string; work_date: string; hours: number };
+export type TimeCell = { phase_id: string; work_date: string; hours: number; note?: string | null };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -160,7 +160,7 @@ export async function getMyWeek(projectId: string, userId: string, weekStart: st
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("time_entries")
-    .select("phase_id, work_date, hours")
+    .select("phase_id, work_date, hours, note")
     .eq("project_id", projectId)
     .eq("user_id", userId)
     .gte("work_date", weekStart)
@@ -243,4 +243,81 @@ export async function getProjectEntries(projectId: string): Promise<EntryDetail[
     user_id: r.user_id,
     user_name: r.user?.name || r.user?.email || "Someone",
   }));
+}
+
+
+// ---------------------------------------------------------------------
+// Roles and teams
+// ---------------------------------------------------------------------
+export type Access = "admin" | "member";
+
+/** Your access to one project ("admin" or "member"), and your role name on it. */
+export async function getProjectAccess(projectId: string, userId: string) {
+  if (!UUID.test(projectId)) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("project_members")
+    .select("access, role_name")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return (data as { access: Access; role_name: string | null } | null) ?? null;
+}
+
+/** Your role name on every project you're on (shown on the Projects sheet). */
+export async function getMyMemberships(userId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase.from("project_members").select("project_id, access, role_name").eq("user_id", userId);
+  return new Map(((data ?? []) as { project_id: string; access: Access; role_name: string | null }[]).map((m) => [m.project_id, m]));
+}
+
+export type TeamMember = { user_id: string; name: string; email: string | null; access: Access; role_name: string | null };
+export type Invite = {
+  id: string;
+  code: string;
+  access: Access;
+  role_name: string | null;
+  email: string | null;
+  expires_at: string;
+  used_at: string | null;
+  used_by_name: string | null;
+  waiting: boolean; // not used yet and not expired
+};
+
+/** A project's team and its invites (project admins only). */
+export async function getTeam(projectId: string) {
+  if (!UUID.test(projectId)) return { members: [] as TeamMember[], invites: [] as Invite[] };
+  const supabase = await createClient();
+  const [members, invites] = await Promise.all([
+    supabase
+      .from("project_members")
+      .select("user_id, access, role_name, created_at, user:profiles!project_members_user_id_fkey(name, email)")
+      .eq("project_id", projectId)
+      .order("created_at"),
+    supabase
+      .from("invites")
+      .select("id, code, access, role_name, email, expires_at, used_at, user:profiles!invites_used_by_fkey(name, email)")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false }),
+  ]);
+  if (members.error) console.error("Loading team failed:", members.error.message);
+  if (invites.error) console.error("Loading invites failed:", invites.error.message);
+
+  type RawMember = { user_id: string; access: Access; role_name: string | null; user: { name: string | null; email: string | null } | null };
+  type RawInvite = Omit<Invite, "used_by_name" | "waiting"> & { user: { name: string | null; email: string | null } | null };
+
+  return {
+    members: ((members.data ?? []) as unknown as RawMember[]).map((m) => ({
+      user_id: m.user_id,
+      name: m.user?.name || m.user?.email || "Someone",
+      email: m.user?.email ?? null,
+      access: m.access,
+      role_name: m.role_name,
+    })),
+    invites: ((invites.data ?? []) as unknown as RawInvite[]).map(({ user, ...i }) => ({
+      ...i,
+      used_by_name: user ? user.name || user.email : null,
+      waiting: !i.used_at && new Date(i.expires_at).getTime() > Date.now(),
+    })),
+  };
 }

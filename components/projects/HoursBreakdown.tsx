@@ -17,11 +17,13 @@ export default function HoursBreakdown({
   entries,
   phases,
   currentUserId,
+  showMoney = true,
 }: {
   projectName: string;
   entries: EntryDetail[];
   phases: PhaseRef[];
   currentUserId: string;
+  showMoney?: boolean; // team members see hours only
 }) {
   const [person, setPerson] = useState("");
   const [phase, setPhase] = useState("");
@@ -73,9 +75,15 @@ export default function HoursBreakdown({
   function downloadCsv() {
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
     const lines = [
-      ["Date", "Person", "Phase", "Hours", "Rate", "Amount", "Billable", "Note"].map(esc).join(","),
+      (showMoney
+        ? ["Date", "Person", "Phase", "Hours", "Rate", "Amount", "Billable", "Note"]
+        : ["Date", "Person", "Phase", "Hours", "Note"]
+      ).map(esc).join(","),
       ...filtered.map((e) =>
-        [e.work_date, e.user_name, phaseName(e.phase_id), e.hours, e.rate, amount(e).toFixed(2), e.billable ? "Yes" : "No", e.note ?? ""]
+        (showMoney
+          ? [e.work_date, e.user_name, phaseName(e.phase_id), e.hours, e.rate, amount(e).toFixed(2), e.billable ? "Yes" : "No", e.note ?? ""]
+          : [e.work_date, e.user_name, phaseName(e.phase_id), e.hours, e.note ?? ""]
+        )
           .map(esc)
           .join(",")
       ),
@@ -153,15 +161,17 @@ export default function HoursBreakdown({
       </section>
 
       {/* Totals */}
-      <section className="grid gap-6 border-y border-moa-line py-6 sm:grid-cols-3">
+      <section className={`grid gap-6 border-y border-moa-line py-6 ${showMoney ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <div>
           <p className="text-sm text-moa-muted">Hours</p>
           <p className="mt-1 text-3xl font-medium">{hoursText(totalHours)}</p>
         </div>
-        <div>
-          <p className="text-sm text-moa-muted">Billed value</p>
-          <p className="mt-1 text-3xl font-medium">{money(totalAmount)}</p>
-        </div>
+        {showMoney && (
+          <div>
+            <p className="text-sm text-moa-muted">Billed value</p>
+            <p className="mt-1 text-3xl font-medium">{money(totalAmount)}</p>
+          </div>
+        )}
         <div>
           <p className="text-sm text-moa-muted">Entries</p>
           <p className="mt-1 text-3xl font-medium">{filtered.length}</p>
@@ -186,7 +196,7 @@ export default function HoursBreakdown({
                     </th>
                   ))}
                   <th className="px-3 py-3 text-right font-normal">Total</th>
-                  <th className="py-3 pl-3 text-right font-normal">Value</th>
+                  {showMoney && <th className="py-3 pl-3 text-right font-normal">Value</th>}
                 </tr>
               </thead>
               <tbody>
@@ -199,7 +209,7 @@ export default function HoursBreakdown({
                       </td>
                     ))}
                     <td className="px-3 py-3 text-right font-medium tabular-nums">{h(r.hours)} h</td>
-                    <td className="py-3 pl-3 text-right tabular-nums">{money(r.amount)}</td>
+                    {showMoney && <td className="py-3 pl-3 text-right tabular-nums">{money(r.amount)}</td>}
                   </tr>
                 ))}
               </tbody>
@@ -213,7 +223,7 @@ export default function HoursBreakdown({
                       </td>
                     ))}
                     <td className="px-3 py-3 text-right font-semibold tabular-nums text-moa-text">{h(totalHours)} h</td>
-                    <td className="py-3 pl-3 text-right tabular-nums text-moa-text">{money(totalAmount)}</td>
+                    {showMoney && <td className="py-3 pl-3 text-right tabular-nums text-moa-text">{money(totalAmount)}</td>}
                   </tr>
                 </tfoot>
               )}
@@ -225,7 +235,7 @@ export default function HoursBreakdown({
       {/* Every entry */}
       <section>
         <h2 className="mb-1 text-2xl font-medium">All entries</h2>
-        <p className="mb-4 text-sm text-moa-muted">Notes come from Log hours on the Projects sheet.</p>
+        <p className="mb-4 text-sm text-moa-muted">Notes added on the Timesheet or with Log hours.</p>
         {filtered.length === 0 ? (
           <p className="text-moa-muted">No entries match these filters.</p>
         ) : (
@@ -238,8 +248,8 @@ export default function HoursBreakdown({
                     <th className="py-3 pr-4 font-normal">Person</th>
                     <th className="py-3 pr-4 font-normal">Phase</th>
                     <th className="py-3 pr-4 text-right font-normal">Hours</th>
-                    <th className="py-3 pr-4 text-right font-normal">Rate</th>
-                    <th className="py-3 pr-4 text-right font-normal">Amount</th>
+                    {showMoney && <th className="py-3 pr-4 text-right font-normal">Rate</th>}
+                    {showMoney && <th className="py-3 pr-4 text-right font-normal">Amount</th>}
                     <th className="py-3 font-normal">Note</th>
                   </tr>
                 </thead>
@@ -252,10 +262,12 @@ export default function HoursBreakdown({
                       <td className="whitespace-nowrap py-3 pr-4">{e.user_id === currentUserId ? `${e.user_name} (you)` : e.user_name}</td>
                       <td className="py-3 pr-4">{phaseName(e.phase_id)}</td>
                       <td className="py-3 pr-4 text-right font-medium tabular-nums">{h(e.hours)}</td>
-                      <td className="py-3 pr-4 text-right tabular-nums text-moa-muted">{e.rate ? money(e.rate) : "—"}</td>
-                      <td className="py-3 pr-4 text-right tabular-nums">
-                        {e.billable ? money(amount(e), 2) : <span className="text-moa-muted">Not billable</span>}
-                      </td>
+                      {showMoney && <td className="py-3 pr-4 text-right tabular-nums text-moa-muted">{e.rate ? money(e.rate) : "—"}</td>}
+                      {showMoney && (
+                        <td className="py-3 pr-4 text-right tabular-nums">
+                          {e.billable ? money(amount(e), 2) : <span className="text-moa-muted">Not billable</span>}
+                        </td>
+                      )}
                       <td className="max-w-[24rem] whitespace-pre-line py-3 text-moa-muted">{e.note || ""}</td>
                     </tr>
                   ))}

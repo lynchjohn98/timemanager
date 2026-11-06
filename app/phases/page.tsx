@@ -17,6 +17,7 @@ export default function PhasesPage() {
 async function Library() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
+  if (profile.app_role !== "admin") redirect("/");
   const { tags, sets } = await getPhaseLibrary();
 
   return (

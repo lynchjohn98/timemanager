@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/profile";
 import { logout } from "@/app/auth/actions";
 import Avatar from "@/components/Avatar";
+import JoinWithCode from "@/components/JoinWithCode";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -37,9 +38,12 @@ async function AccountDetails() {
       <div className="w-full border-t-2 border-moa-text">
         <Row label="Name" value={profile.name || "—"} />
         <Row label="Email" value={profile.email || "—"} />
+        <Row label="Access" value={profile.app_role === "admin" ? "Admin: creates projects and invites people" : "Team member: logs hours on projects you're invited to"} />
         <Row label="Timezone" value={profile.timezone.replace(/_/g, " ")} />
         <Row label="Member since" value={formatDate(profile.created_at)} />
       </div>
+
+      <JoinWithCode />
 
       <form action={logout}>
         <button
