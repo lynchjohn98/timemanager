@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getProfile } from "@/lib/profile";
-import { getAllData, getMyWeek, getPhaseLibrary, getTeamWeek, isUuid } from "@/lib/data";
+import { getAllData, getMyWeek, getPhaseLibrary, getProjectEntries, getTeamWeek, isUuid } from "@/lib/data";
 import { buildStats, forecast, targetFromStats } from "@/lib/forecast";
 import { addDays, mondayOf, shortDate, ymdInTz } from "@/lib/dates";
 import { hoursText, money, pct, statusLabel } from "@/lib/options";
@@ -11,12 +11,14 @@ import ForecastCard from "@/components/projects/ForecastCard";
 import Timesheet from "@/components/projects/Timesheet";
 import PhaseEditor from "@/components/projects/PhaseEditor";
 import ProjectDetailsForm from "@/components/projects/ProjectDetailsForm";
+import HoursBreakdown from "@/components/projects/HoursBreakdown";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string; week?: string }>;
 
 const TABS = [
   { key: "time", label: "Timesheet" },
+  { key: "hours", label: "Hours" },
   { key: "phases", label: "Phases" },
   { key: "details", label: "Details" },
 ] as const;
@@ -44,11 +46,12 @@ async function ProjectContent({ params, searchParams }: { params: Params; search
   const weekStart = mondayOf(sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : today);
   const weekEnd = addDays(weekStart, 6);
 
-  const [{ projects, phases, weeks }, library, mine, team] = await Promise.all([
+  const [{ projects, phases, weeks }, library, mine, team, entries] = await Promise.all([
     getAllData(),
     getPhaseLibrary(),
     tab === "time" ? getMyWeek(id, profile.id, weekStart, weekEnd) : Promise.resolve([]),
     tab === "time" ? getTeamWeek(id, weekStart, weekEnd) : Promise.resolve([]),
+    tab === "hours" ? getProjectEntries(id) : Promise.resolve([]),
   ]);
 
   const stats = buildStats(projects, phases, weeks, today);
@@ -141,6 +144,14 @@ async function ProjectContent({ params, searchParams }: { params: Params; search
             }))}
             initialCells={mine}
             team={team}
+          />
+        )}
+        {tab === "hours" && (
+          <HoursBreakdown
+            projectName={p.name}
+            entries={entries}
+            phases={s.phases.map((ph) => ({ id: ph.phase.id, name: ph.phase.name }))}
+            currentUserId={profile.id}
           />
         )}
         {tab === "phases" && (

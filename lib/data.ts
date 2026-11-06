@@ -192,3 +192,55 @@ export async function getTeamWeek(projectId: string, weekStart: string, weekEnd:
 }
 
 export const isUuid = (id: string) => UUID.test(id);
+
+/** Every hour entry on one project, newest first, with who logged it (for the Hours tab). */
+export type EntryDetail = {
+  id: string;
+  work_date: string;
+  hours: number;
+  rate: number;
+  billable: boolean;
+  note: string | null;
+  phase_id: string;
+  user_id: string;
+  user_name: string;
+};
+
+export async function getProjectEntries(projectId: string): Promise<EntryDetail[]> {
+  if (!UUID.test(projectId)) return [];
+  const supabase = await createClient();
+
+  type Raw = {
+    id: string;
+    work_date: string;
+    hours: number;
+    rate: number;
+    billable: boolean;
+    note: string | null;
+    phase_id: string;
+    user_id: string;
+    user: { name: string | null; email: string | null } | null;
+  };
+
+  const rows = await fetchAll<Raw>((a, b) =>
+    supabase
+      .from("time_entries")
+      .select("id, work_date, hours, rate, billable, note, phase_id, user_id, user:profiles!time_entries_user_id_fkey(name, email)")
+      .eq("project_id", projectId)
+      .order("work_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(a, b)
+  );
+
+  return rows.map((r) => ({
+    id: r.id,
+    work_date: r.work_date,
+    hours: Number(r.hours),
+    rate: Number(r.rate),
+    billable: r.billable,
+    note: r.note,
+    phase_id: r.phase_id,
+    user_id: r.user_id,
+    user_name: r.user?.name || r.user?.email || "Someone",
+  }));
+}
